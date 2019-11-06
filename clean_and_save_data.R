@@ -64,7 +64,8 @@ use_python("/usr/local/lib/python3.7/")
 py_run_file("scraper.py")
 
 matchup_data <- py$matchup_df
-matchup_data$matchup <- floor(0:(nrow(matchup_data)-1)/8)+1
+
+class(matchup_data$matchup) = "numeric"
 
 records_df <- t(sapply(unique(matchup_data$Team), function(x){
     matchups <- matchup_data %>%
@@ -128,6 +129,7 @@ matchup_data_all<-matchup_data
 matchup_data <- matchup_data %>%
     filter(matchup==max(matchup)) %>%
     select(-c(CatWins,CatLosses,CatTies,CatPts,matchup)) %>%
+    distinct() %>%
     column_to_rownames("Team")
 
 weekly_cat_rankings<-matchup_data
@@ -198,7 +200,13 @@ ord <- hclust( dist(weekly_team_z, method = "euclidean"), method = "ward.D" )$or
 library(reshape)
 weekly_team_z.m<-melt(weekly_team_z)
 weekly_team_z.m$X1 <- factor(weekly_team_z.m$X1, levels = rownames(weekly_team_z)[ord])
-weekly_team_z.m$X2 <- factor(weekly_team_z.m$X2, levels = rev(colnames(matchup_data)))
+## weekly_team_z.m$X2 <- factor(weekly_team_z.m$X2, levels = rev(colnames(matchup_data)))
+weekly_team_z.m$X2 <- factor(weekly_team_z.m$X2, levels = rev(c("Goals","Assists",
+                                                                "PPP","SHP","Points",
+                                                                "PlusMinus","PIM","SOG",
+                                                                "Hits","ATOI","Blocks",
+                                                                "G.TOI","Wins","GAA","Saves",
+                                                                "G.Points","G.PIM")))
 vlines=data.frame(vlines= seq(1.5,11.5,by=1))
 
 weekly_heatmap<-ggplot(weekly_team_z.m, aes(X1, X2)) +
@@ -207,8 +215,8 @@ weekly_heatmap<-ggplot(weekly_team_z.m, aes(X1, X2)) +
     theme_classic(base_size = 12) + labs(x = "",y = "") +
     scale_x_discrete(expand = c(0, 0)) +
     scale_y_discrete(expand = c(0, 0)) +
-    geom_hline(aes(yintercept = 4.5),size=2.4,alpha=0.74)+
-    geom_hline(aes(yintercept = 10.5),size=2.4,alpha=0.74)+
+    geom_hline(aes(yintercept = 6.5),size=2.4,alpha=0.74)+
+    geom_hline(aes(yintercept = 12.5),size=2.4,alpha=0.74)+
     geom_vline(aes(xintercept = vlines),data=vlines,size=1.4,alpha=0.74)+
     guides(fill=guide_legend(title="Z Score")) +
     theme(axis.text.x = element_text(size = 20,
@@ -222,7 +230,12 @@ class(season_data_z)<-"numeric"
 ord <- hclust( dist(season_data_z, method = "euclidean"), method = "ward.D" )$order
 season_data_z.m<-melt(season_data_z)
 season_data_z.m$X1 <- factor(season_data_z.m$X1, levels = rownames(season_data_z)[ord])
-season_data_z.m$X2 <- factor(season_data_z.m$X2, levels = rev(colnames(matchup_data)))
+season_data_z.m$X2 <- factor(season_data_z.m$X2, levels = rev(c("Goals","Assists",
+                                                                "PPP","SHP","Points",
+                                                                "PlusMinus","PIM","SOG",
+                                                                "Hits","ATOI","Blocks",
+                                                                "G.TOI","Wins","GAA","Saves",
+                                                                "G.Points","G.PIM")))
 
 vlines=data.frame(vlines= seq(1.5,11.5,by=1))
 
@@ -232,12 +245,12 @@ seasonal_heatmap<-ggplot(season_data_z.m, aes(X1, X2)) +
     theme_classic(base_size = 12) + labs(x = "",y = "") +
     scale_x_discrete(expand = c(0, 0)) +
     scale_y_discrete(expand = c(0, 0)) +
-    geom_hline(aes(yintercept = 4.5),size=2.4,alpha=0.74)+
-    geom_hline(aes(yintercept = 10.5),size=2.4,alpha=0.74)+
+    geom_hline(aes(yintercept = 6.5),size=2.4,alpha=0.74)+
+    geom_hline(aes(yintercept = 12.5),size=2.4,alpha=0.74)+
     geom_vline(aes(xintercept = vlines),data=vlines,size=1.4,alpha=0.74)+
     guides(fill=guide_legend(title="Z Score")) +
     theme(axis.text.x = element_text(size = 20,
                                      angle = 330, hjust = 0),
           axis.text.y = element_text(size=20,face = "bold"))
 
-save(list = ls(),file="week3.Rda")
+save(list = ls(),file="week5.Rda")

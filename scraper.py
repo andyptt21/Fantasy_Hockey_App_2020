@@ -5,7 +5,7 @@ import pandas as pd
 from pandas.io.html import read_html
 from selenium import webdriver
 driver = webdriver.Chrome()
-driver.get("https://www.fantrax.com/fantasy/league/8i8nwftijzzq6mwq/standings?startDate=2019-10-02&endDate=2020-04-04&hideGoBackDays=true&period=3&timeStartType=PERIOD_ONLY&timeframeType=YEAR_TO_DATE&view=SCHEDULE&pageNumber=1")
+driver.get("https://www.fantrax.com/fantasy/league/8i8nwftijzzq6mwq/standings?startDate=2019-10-02&endDate=2020-04-04&hideGoBackDays=true&period=22&timeStartType=PERIOD_ONLY&timeframeType=YEAR_TO_DATE&view=SCHEDULE&pageNumber=1")
 time.sleep(5)
 
 
@@ -21,16 +21,23 @@ def matchup_scraper(num):
         teams[x] = teams[x][10:]
         teams[x] = teams[x][:-8]
     df['Team'] = teams
+    df['matchup'] = [num] * len(teams)
     df.columns = ['CatWins','CatLosses','CatTies','CatPts',
                   'Goals','Assists','Points','PlusMinus',
                   'PIM','SOG','Hits','PPP','ATOI','SHP',
                   'Blocks','Wins','GAA','Saves','G.Points',
-                  'G.TOI','G.PIM','Team']
+                  'G.TOI','G.PIM','Team','matchup']
     return(df)
 
 matchup1 = matchup_scraper('1')
 matchup_df = matchup1.append(matchup_scraper('2'))
-matchup_df = matchup_df.append(matchup_scraper('3'))
+
+list = range(3,23)
+for x in list:
+    try:
+        matchup_df = matchup_df.append(matchup_scraper(str(x)))
+    except:
+        break
 
 ## Calculate season stats and record from matchup stats in R
  # driver.get('http://fantasy.espn.com/hockey/league/standings?leagueId=21656')

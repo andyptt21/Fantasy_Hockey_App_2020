@@ -14,7 +14,7 @@ library(plotly)
 
 Sys.setenv('MAPBOX_TOKEN' = 'pk.eyJ1IjoiYW5keXB0dDIxIiwiYSI6ImNqcmM3YTc4MzA2d3Q0M3MxN3Ziazkwd3kifQ.7mUkjFMzgz7F4TlEorW2Mg')
 setwd("~/Documents/Fantasy_App_2020/")
-load("week3.Rda")
+load("week5.Rda")
 
 ui <- dashboardPage(skin = "blue",
                     dashboardHeader(title = "Nisky & Friends VII"),
