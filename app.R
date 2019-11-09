@@ -5,16 +5,16 @@ library(shinythemes)
 library(shinydashboard)
 library(ggplot2)
 library(lubridate)
-library(leaflet)
 library(plotly)
+library(ggrepel)
 #library(reticulate)
 
 # For shiny.io only
 #use_python("/usr/bin/python3/")
-
-Sys.setenv('MAPBOX_TOKEN' = 'pk.eyJ1IjoiYW5keXB0dDIxIiwiYSI6ImNqcmM3YTc4MzA2d3Q0M3MxN3Ziazkwd3kifQ.7mUkjFMzgz7F4TlEorW2Mg')
+week <- ceiling(as.numeric(difftime(strptime(gsub("-",".",Sys.Date()), format = "%Y.%m.%d"),
+                 strptime("14.10.2019", format = "%d.%m.%Y"),units="weeks")) + 1)
 setwd("~/Documents/Fantasy_App_2020/")
-load("week5.Rda")
+load(paste0("week",week,".Rda"))
 
 ui <- dashboardPage(skin = "blue",
                     dashboardHeader(title = "Nisky & Friends VII"),
@@ -34,13 +34,15 @@ ui <- dashboardPage(skin = "blue",
                                            solidHeader = T,
                                            status = "primary",
                                            sidebarLayout(sidebarPanel(
-                                             selectInput("power_rank_plot_selection","Category",choices = c("Power Rankings",
-                                                                                                            "Standings",
-                                                                                                            "Power Rank vs. Standing",
-                                                                                                            "Skater Rank",
-                                                                                                            "Goalie Rank"),
-                                                         selected = "Power Rank vs. Standing"),
-                                             tableOutput('power_rankings_table')
+                                               actionButton('downloadAllPlots',
+                                                            'DOWNLOAD ALL PLOTS'),
+                                               selectInput("power_rank_plot_selection","Category",choices = c("Power Rankings",
+                                                                                                              "Standings",
+                                                                                                              "Power Rank vs. Standing",
+                                                                                                              "Skater Rank",
+                                                                                                              "Goalie Rank"),
+                                                           selected = "Power Rank vs. Standing"),
+                                               tableOutput('power_rankings_table')
                                            ),
                                            mainPanel(
                                                plotlyOutput('power_rankings_barplot',height = "500px"),
@@ -52,7 +54,9 @@ ui <- dashboardPage(skin = "blue",
                                            solidHeader = T,
                                            status = "primary",
                                            column(width=12,
-                                                  plotOutput('seasonalHeatmap',height='700px'))
+                                                  plotOutput('seasonalHeatmap',height='700px'),
+                                                  actionButton("saveSeasonHeatmap",
+                                                               "Save Seasonal Heatmap"))
                                            )),
                               fluidRow(
                               box(width = 12,
@@ -121,7 +125,9 @@ ui <- dashboardPage(skin = "blue",
                                            solidHeader = T,
                                            status = "primary",
                                            column(width=12,
-                                                  plotOutput('weeklyHeatmap',height='700px'))
+                                                  plotOutput('weeklyHeatmap',height='700px'),
+                                                  actionButton("saveWeeklyHeatmap",
+                                                               "Save Weekly Heatmap"))
                                            )),
                               fluidRow(box(width = 12,
                                            title = strong("Weekly Team Barplots"),
@@ -148,20 +154,19 @@ server <- function(input, output,session) {
     season_data, hover=TRUE
   )
 
-  output$z_table <- renderDataTable(
+  output$z_table <- renderTable(
     dataframe_z,options=list(paging=FALSE,searching=FALSE)
   )
 
   output$total_boxplot <- renderPlotly({
     z_2<-dataframe_z
     rownames(z_2)<-dataframe_z[,1]
-    z_2[,ncol(z_2)] = -as.numeric(z_2[,ncol(z_2)])
     z_2<-z_2[,-1]
     boxplot_list<-list()
+    boxplot_list_medians<-c()
     for(i in 1:nrow(z_2)){
       boxplot_list[[i]]<-as.numeric(z_2[i,])
     }
-    boxplot_list_medians<-c()
     for(i in 1:length(boxplot_list)){
       boxplot_list_medians[i]<-median(boxplot_list[[i]])
     }
@@ -192,7 +197,6 @@ server <- function(input, output,session) {
   output$team_barplot <- renderPlotly({
     z_2<-dataframe_z
     rownames(z_2)<-dataframe_z[,1]
-    z_2[,ncol(z_2)] = -as.numeric(z_2[,ncol(z_2)])
     z_2<-z_2[,-1]
     colors<-c()
     for(i in 1:ncol(z_2)){
@@ -221,7 +225,6 @@ server <- function(input, output,session) {
   output$cat_barplot <- renderPlotly({
     z_2<-dataframe_z
     rownames(z_2)<-dataframe_z[,1]
-    z_2[,ncol(z_2)] = -as.numeric(z_2[,ncol(z_2)])
     z_2<-z_2[,-1]
     cat_frame<-data.frame(rownames(z_2)[order(as.numeric(z_2[,as.numeric(catSelected())]),decreasing = TRUE)],sort(as.numeric(z_2[,as.numeric(catSelected())]),decreasing = TRUE))
     colnames(cat_frame)<-c("Team","Value")
@@ -240,7 +243,6 @@ server <- function(input, output,session) {
 
   cat_rankings<-reactive({
     z_2<-dataframe_z
-    z_2[,ncol(z_2)] = -as.numeric(z_2[,ncol(z_2)])
     z_2<-z_2[,-1]
     cat_rankings<-z_2
     for(i in 1:ncol(z_2)){
@@ -280,16 +282,14 @@ server <- function(input, output,session) {
     colnames(final_matrix)[c(1:3)]<-c("Team", "Points","Power Rank")
     final_matrix
   })
-
-  output$category_rankings<-renderDataTable(
-    cat_rankings_brief(),
-    options = list(bPaginate=F)
-  )
+    
+    output$category_rankings<-renderTable(
+        cat_rankings_brief()
+    )
 
   power_rankings<-reactive({
     if(input$power_rank_plot_selection=="Power Rankings"||input$power_rank_plot_selection=="Power Rank vs. Standing"){
     z_2<-dataframe_z
-    z_2[,ncol(z_2)] = -as.numeric(z_2[,ncol(z_2)])
     z_2<-z_2[,-1]
     rownames(z_2)<-rownames(season_data)
     cat_rankings<-z_2
@@ -364,16 +364,17 @@ server <- function(input, output,session) {
       colnames(power_rankings)<-c("Team","PowerRank","Points")
       power_rankings$Team<-factor(power_rankings$Team,
                                   levels = power_rankings$Team[order(power_rankings$Points,decreasing = TRUE)])
-
+      games_played_order <- match(as.vector(cat_rankings()[,1]),names(games_for_average_stats))
+      power_rankings$Points <- power_rankings$Points/(2*games_for_average_stats[games_played_order])
       p <- plot_ly(power_rankings, x = ~Points) %>%
         add_trace(y = ~PowerRank, text = ~Team,
                    marker = list(color = gg_color_hue(12), size = 20), showlegend = FALSE,
                   name = " ",mode='text',text = ~Team, textposition = 'middle right') %>%
-        add_lines(y = ~fitted(loess(PowerRank ~ Points)),
+        add_lines(y = ~fitted(lm(PowerRank ~ Points)),
                   line = list(color = 'black'), name = "Loess Smoother",
                   showlegend = FALSE) %>%
         layout(title = input$power_rank_plot_selection,
-               xaxis = list(title = "Points"),
+               xaxis = list(title = "Points Percentage"),
                yaxis = list(title = "Power Rank")#,
                #margin = list(b = 160, r = 100)
                )
@@ -398,112 +399,139 @@ server <- function(input, output,session) {
     }
   })
 
-  observeEvent(input$saveSeasonPowerPlot, {
-          if(input$power_rank_plot_selection=="Power Rankings"){
-      power_rankings<-data.frame(cat_rankings()[,1],as.numeric(cat_rankings()[,"Average Rank"]))
-    }else if(input$power_rank_plot_selection=="Skater Rank"){
-      power_rankings<-data.frame(cat_rankings()[,1],as.numeric(cat_rankings()[,"Skater Rank"]))
-    }else if(input$power_rank_plot_selection=="Goalie Rank"){
-      power_rankings<-data.frame(cat_rankings()[,1],as.numeric(cat_rankings()[,"Goaltending Rank"]))
-    }
-    if(input$power_rank_plot_selection=="Power Rankings"||input$power_rank_plot_selection=="Skater Rank"||input$power_rank_plot_selection=="Goalie Rank"){
+    observeEvent({
+        input$saveSeasonPowerPlot
+        input$downloadAllPlots
+    }, {
+      if(input$power_rank_plot_selection=="Power Rankings"){
+          power_rankings<-data.frame(cat_rankings()[,1],as.numeric(cat_rankings()[,"Average Rank"]))
+      }else if(input$power_rank_plot_selection=="Skater Rank"){
+          power_rankings<-data.frame(cat_rankings()[,1],as.numeric(cat_rankings()[,"Skater Rank"]))
+      }else if(input$power_rank_plot_selection=="Goalie Rank"){
+          power_rankings<-data.frame(cat_rankings()[,1],as.numeric(cat_rankings()[,"Goaltending Rank"]))
+      }
+      if(input$power_rank_plot_selection=="Power Rankings"||
+         input$power_rank_plot_selection=="Skater Rank"||
+         input$power_rank_plot_selection=="Goalie Rank"){
+          f1 <- list(
+              family = "Arial, sans-serif",
+              size = 18,
+              color = "black")
+          colnames(power_rankings)<-c("Team","AverageRank")
+          power_rankings$Team<-factor(power_rankings$Team,
+                                      levels = power_rankings$Team[order(power_rankings$AverageRank,
+                                                                         decreasing = FALSE)])
+          ## p <- plot_ly(power_rankings, x = ~Team, y = ~AverageRank, type = 'bar',
+          ##              marker = list(color = gg_color_hue(12))) %>%
+          ##     layout(title = input$power_rank_plot_selection,
+          ##            xaxis = list(title = "",tickangle = 45, tickfont=f1),
+          ##            yaxis = list(title = "Average Rank"),
+          ##            margin = list(b = 160, r = 100))
+          p <- ggplot(power_rankings, aes(x = Team, y = AverageRank, fill = Team)) +
+              geom_bar(stat="identity") +
+              ggtitle(input$power_rank_plot_selection) +
+              xlab("") + ylab("Average Rank") +
+              theme_classic() +
+              theme(axis.text.x = element_text(hjust=1,angle=45)) +
+              guides(fill=FALSE)
+      }else if(input$power_rank_plot_selection=="Power Rank vs. Standing"){
+          records_order<-match(as.vector(cat_rankings()[,1]),names(records))
+          records<-as.numeric(records)
+          power_rankings<-data.frame(cat_rankings()[,1],
+                                     as.numeric(cat_rankings()[,"Average Rank"]),
+                                     records[records_order])
+          colnames(power_rankings)<-c("Team","PowerRank","Points")
+          power_rankings$Team<-factor(power_rankings$Team,
+                                      levels = power_rankings$Team[order(power_rankings$Points,
+                                                                         decreasing = TRUE)])
+          
+          games_played_order <- match(as.vector(cat_rankings()[,1]),names(games_for_average_stats))
+          power_rankings$Points <- power_rankings$Points/(2*games_for_average_stats[games_played_order])
+      
+          p <- ggplot(power_rankings, aes(x = Points, y = PowerRank,
+                                          label = paste0(Team,", \nScore = ",PowerRank))) +
+              geom_smooth(method="lm") +
+              geom_point(size=5) +
+              geom_label_repel(label.padding=0.65,size = 2.5) +
+              ggtitle(input$power_rank_plot_selection) +
+              xlab("Points Percentage") + ylab("Power Rank") +
+              guides(color=FALSE)
+            
+    }else if(input$power_rank_plot_selection=="Standings"){
         f1 <- list(
             family = "Arial, sans-serif",
             size = 18,
             color = "black")
+        records_order<-match(as.vector(cat_rankings()[,1]),names(records))
+        records<-as.numeric(records)
+        power_rankings<-data.frame(cat_rankings()[,1],records[records_order])
         colnames(power_rankings)<-c("Team","AverageRank")
+        power_rankings$Team<-factor(power_rankings$Team,
+                                    levels = power_rankings$Team[order(power_rankings$AverageRank,decreasing = TRUE)])
+        p <- ggplot(power_rankings, aes(x = Team, y = AverageRank, fill = Team)) +
+            geom_bar(stat="identity") +
+            ggtitle(input$power_rank_plot_selection) +
+            theme_classic() +
+            theme(axis.text.x = element_text(hjust=1,angle=45)) +
+            xlab("") + ylab("Standings Points") +
+            guides(fill=FALSE)
+    }
+          pdf(paste0("../The_Scientific_Shrimper/Images/season_19_20/seasonalPlotWeek",
+                     week,".pdf"),
+              height=5,width=10)
+          print(p)
+          dev.off()
+  })
+    
+    output$weekly_power_barplot<-renderPlotly({
+        power_rankings<-data.frame(rownames(mean_weekly_cat_rankings),as.numeric(mean_weekly_cat_rankings),as.numeric(sd_weekly_cat_rankings))
+        colnames(power_rankings)<-c("Team","AverageRank","SD")
         power_rankings$Team<-factor(power_rankings$Team,
                                     levels = power_rankings$Team[order(power_rankings$AverageRank,decreasing = FALSE)])
-        p <- plot_ly(power_rankings, x = ~Team, y = ~AverageRank, type = 'bar',
-                     marker = list(color = gg_color_hue(12))) %>%
-            layout(title = input$power_rank_plot_selection,
-                   xaxis = list(title = "",tickangle = 45, tickfont=f1),
-                   yaxis = list(title = "Average Rank"),
-                   margin = list(b = 160, r = 100))
-
-    }else if(input$power_rank_plot_selection=="Power Rank vs. Standing"){
-      records_order<-match(as.vector(cat_rankings()[,1]),names(records))
-      records<-as.numeric(records)
-      power_rankings<-data.frame(cat_rankings()[,1],as.numeric(cat_rankings()[,"Goaltending Rank"]),records[records_order])
-      colnames(power_rankings)<-c("Team","PowerRank","Points")
-      power_rankings$Team<-factor(power_rankings$Team,
-                                  levels = power_rankings$Team[order(power_rankings$Points,decreasing = TRUE)])
-
-      p <- plot_ly(power_rankings, x = ~Points) %>%
-        add_trace(y = ~PowerRank, text = ~Team,
-                   marker = list(color = gg_color_hue(12), size = 20), showlegend = FALSE,
-                  name = " ") %>%
-        add_lines(y = ~fitted(loess(PowerRank ~ Points)),
-                  line = list(color = 'black'), name = "Loess Smoother",
-                  showlegend = FALSE) %>%
-        layout(title = input$power_rank_plot_selection,
-               xaxis = list(title = "Points"),
-               yaxis = list(title = "Power Rank")#,
-               #margin = list(b = 160, r = 100)
-               )
-
-    }else if(input$power_rank_plot_selection=="Standings"){
         f1 <- list(
             family = "Arial, sans-serif",
             size = 18,
             color = "black")
-        records_order<-match(as.vector(cat_rankings()[,1]),names(records))
-        records<-as.numeric(records)
-        power_rankings<-data.frame(cat_rankings()[,1],records[records_order])
-        colnames(power_rankings)<-c("Team","AverageRank")
-        power_rankings$Team<-factor(power_rankings$Team,
-                                    levels = power_rankings$Team[order(power_rankings$AverageRank,decreasing = TRUE)])
         p <- plot_ly(power_rankings, x = ~Team, y = ~AverageRank, type = 'bar',
                      marker = list(color = gg_color_hue(12))) %>%
-            layout(title = input$power_rank_plot_selection,
-                   xaxis = list(title = "",tickangle = 45,tickfont=f1),
+            layout(title = "Weekly Power Ranking",
+                   xaxis = list(title = "",tickangle = 45, tickfont = f1),
                    yaxis = list(title = "Average Rank"),
-                   margin = list(b = 160, r = 100))
-    }
-          orca(p=p,file="../../The_Scientific_Shrimper/Images/seasonalPlot.png",height=500,width=1000)
-  })
-
-  output$weekly_power_barplot<-renderPlotly({
-    power_rankings<-data.frame(rownames(mean_weekly_cat_rankings),as.numeric(mean_weekly_cat_rankings))
-    colnames(power_rankings)<-c("Team","AverageRank")
-    power_rankings$Team<-factor(power_rankings$Team,
-                                levels = power_rankings$Team[order(power_rankings$AverageRank,decreasing = FALSE)])
-    f1 <- list(
-        family = "Arial, sans-serif",
-        size = 18,
-        color = "black")
-    p <- plot_ly(power_rankings, x = ~Team, y = ~AverageRank, type = 'bar',
-                 marker = list(color = gg_color_hue(12))) %>%
-        layout(title = "Weekly Power Ranking",
-               xaxis = list(title = "",tickangle = 45, tickfont = f1),
-               yaxis = list(title = "Average Rank"),
-               margin = list(b = 160, r = 100)
-               )
-  })
-
-  observeEvent(input$saveWeeklyPowerPlot, {
-          power_rankings<-data.frame(rownames(mean_weekly_cat_rankings),as.numeric(mean_weekly_cat_rankings))
-    colnames(power_rankings)<-c("Team","AverageRank")
-    power_rankings$Team<-factor(power_rankings$Team,
-                                levels = power_rankings$Team[order(power_rankings$AverageRank,decreasing = FALSE)])
-    f1 <- list(
-        family = "Arial, sans-serif",
-        size = 18,
-        color = "black")
-    p <- plot_ly(power_rankings, x = ~Team, y = ~AverageRank, type = 'bar',
-                 marker = list(color = gg_color_hue(12))) %>%
-        layout(title = "Weekly Power Ranking",
-               xaxis = list(title = "",tickangle = 45, tickfont = f1),
-               yaxis = list(title = "Average Rank"),
-               margin = list(b = 160, r = 100)
-               )
-          orca(p=p,file="../../The_Scientific_Shrimper/Images/weeklyPlot.png",height=500,width=1000)
-  })
-
-  weekly_power_rankings<-reactive({
-    means_weekly_ranking<-data.frame(Team=rownames(weekly_cat_rankings),
-                                     Ranking=round(as.numeric(rank(mean_weekly_cat_rankings,ties.method = "average"),digits = 0)))
-    means_weekly_ranking<-means_weekly_ranking[order(means_weekly_ranking[,2],decreasing = FALSE),]
+                   margin = list(b = 160, r = 100)
+                   )
+    })
+    
+    observeEvent({
+        input$saveWeeklyPowerPlot
+        input$downloadAllPlots
+    }, {
+        power_rankings<-data.frame(rownames(mean_weekly_cat_rankings),as.numeric(mean_weekly_cat_rankings),as.numeric(sd_weekly_cat_rankings))
+        colnames(power_rankings)<-c("Team","AverageRank","SD")
+        power_rankings$Team<-factor(power_rankings$Team,
+                                    levels = power_rankings$Team[order(power_rankings$AverageRank,decreasing = FALSE)])
+        f1 <- list(
+            family = "Arial, sans-serif",
+            size = 18,
+            color = "black")
+        p <- ggplot(power_rankings, aes(x = Team, y = AverageRank, fill = Team)) +
+            geom_bar(stat="identity") +
+            geom_errorbar(aes(ymin = AverageRank - SD/sqrt(17), ymax = AverageRank + SD/sqrt(17)), width=0.075) +
+            ggtitle("Weekly Power Rank") +
+            theme_bw() +
+            theme(axis.text.x = element_text(hjust=1,angle=45)) +
+            guides(fill=FALSE) +
+            xlab("") + ylab("Average Rank")
+        pdf(paste0("../The_Scientific_Shrimper/Images/season_19_20/weeklyPlotWeek",
+                   week,".pdf"),
+            height=5,width=10)
+        print(p)
+        dev.off()
+    })
+    
+    weekly_power_rankings<-reactive({
+        means_weekly_ranking<-data.frame(Team=rownames(weekly_cat_rankings),
+                                         Ranking=round(as.numeric(rank(mean_weekly_cat_rankings,ties.method = "average"),digits = 0)))
+        means_weekly_ranking<-means_weekly_ranking[order(means_weekly_ranking[,2],decreasing = FALSE),]
     as.matrix(means_weekly_ranking)
   })
   output$weekly_power_table<-renderTable(
@@ -534,7 +562,30 @@ server <- function(input, output,session) {
              yaxis = list(title = "Z score")
              )
   })
-  output$weeklyHeatmap<-renderPlot({weekly_heatmap})
-  output$seasonalHeatmap<-renderPlot({seasonal_heatmap})
+    output$weeklyHeatmap<-renderPlot({weekly_heatmap})
+    output$seasonalHeatmap<-renderPlot({seasonal_heatmap})
+    
+    observeEvent({
+        input$saveSeasonHeatmap
+        input$downloadAllPlots
+    }, {
+        pdf(paste0("../The_Scientific_Shrimper/Images/season_19_20/seasonalHeatmap",
+                   week,".pdf"),
+            height=15,width=20)
+        print(seasonal_heatmap)
+        dev.off()
+    })
+    
+    observeEvent({
+        input$saveWeeklyHeatmap
+        input$downloadAllPlots
+    }, {
+        pdf(paste0("../The_Scientific_Shrimper/Images/season_19_20/weeklyHeatmap",
+                   week,".pdf"),
+            height=15,width=20)
+        print(weekly_heatmap)
+        dev.off()
+    })
+    
 }
 shinyApp(ui = ui, server = server)

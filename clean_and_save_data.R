@@ -12,11 +12,9 @@ library(reticulate)
 library(tidyverse)
 
 setwd("~/Documents/Fantasy_App_2020/")
-date <- as.Date(Sys.Date())
-previous_sunday <- floor_date(date, "week")
-if(date==previous_sunday){
-  previous_sunday=previous_sunday-7
-}
+
+week <- ceiling(as.numeric(difftime(strptime(gsub("-",".",Sys.Date()), format = "%Y.%m.%d"),
+                 strptime("14.10.2019", format = "%d.%m.%Y"),units="weeks")) + 1)
 
 z_score<-function(x,mean,sd){
   z<-(x-mean)/sd
@@ -41,8 +39,6 @@ toSeconds <- function(x){
     )
   )
 }
-
-locations <- read.csv("~/Documents/Fantasy_App_2019/2018_divisions.csv")
 
 gg_color_hue <- function(n) {
   hues = seq(15, 375, length = n + 1)
@@ -116,15 +112,34 @@ games_for_average_stats <- sapply(rownames(season_data), function(x){
     return(games)
 })
 
-season_data = apply(season_data,2,function(x) x/games_for_average_stats) %>%
-    as.data.frame() %>%
-    select(-c(CatWins,CatLosses,CatTies,CatPts,matchup))
+season_data <- py$season_df %>%
+    column_to_rownames("Team")
+season_data$GAA <- as.numeric(season_data$GAA)*-1
+season_data$ATOI <- toSeconds(season_data$ATOI)
+season_data$G.TOI <- toSeconds(season_data$G.TOI)
 
 dataframe_z <- apply(season_data,2,function(x) return(scale(as.numeric(x))))
 rownames(dataframe_z) <- rownames(season_data)
 dataframe_z<-cbind(rownames(dataframe_z),dataframe_z)
 
 matchup_data_all<-matchup_data
+
+matchup_data_all_z<-matchup_data_all %>%
+    select(-c(CatWins,CatLosses,CatTies,CatPts)) %>%
+    distinct()
+
+matchup_data_all_z <- sapply(unique(matchup_data_all_z$matchup),
+                             function(x){
+                                 out<-matchup_data_all_z %>%
+                                     filter(matchup==x) %>%
+                                     mutate_at(-c(18,19),funs(c(scale(.))))
+                                 return(out)
+                             })
+matchup_data_all_z <- do.call("rbind",apply(matchup_data_all_z,2,function(x){
+    return(as.data.frame(x))
+}))
+
+matchup_data_all_z[is.na(matchup_data_all_z)] <- 0
 
 matchup_data <- matchup_data %>%
     filter(matchup==max(matchup)) %>%
@@ -136,11 +151,19 @@ weekly_cat_rankings<-matchup_data
 for(i in 1:ncol(weekly_cat_rankings)){
   weekly_cat_rankings[,i]<-rank(-as.numeric(weekly_cat_rankings[,i]),ties.method = "average")
 }
+
 mean_weekly_cat_rankings<-matrix(0,ncol=1,nrow=nrow(weekly_cat_rankings))
 rownames(mean_weekly_cat_rankings)<-rownames(weekly_cat_rankings)
 for(i in 1:nrow(weekly_cat_rankings)){
   mean_weekly_cat_rankings[i]<-mean(as.numeric(weekly_cat_rankings[i,]))
 }
+
+sd_weekly_cat_rankings<-matrix(0,ncol=1,nrow=nrow(weekly_cat_rankings))
+rownames(sd_weekly_cat_rankings)<-rownames(weekly_cat_rankings)
+for(i in 1:nrow(weekly_cat_rankings)){
+  sd_weekly_cat_rankings[i]<-sd(as.numeric(weekly_cat_rankings[i,]))
+}
+
 
 weekly_team_z <- apply(matchup_data,2,function(x) return(scale(as.numeric(x))))
 weekly_team_z[is.na(weekly_team_z)] <- 0
@@ -253,4 +276,4 @@ seasonal_heatmap<-ggplot(season_data_z.m, aes(X1, X2)) +
                                      angle = 330, hjust = 0),
           axis.text.y = element_text(size=20,face = "bold"))
 
-save(list = ls(),file="week5.Rda")
+save(list = ls(),file=paste0("week",week,".Rda"))
