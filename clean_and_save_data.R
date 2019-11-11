@@ -1,20 +1,20 @@
-library(shiny)
 library(plotrix)
 library(RColorBrewer)
 library(rvest)
 library(shinythemes)
-library(shinydashboard)
 library(ggplot2)
 library(lubridate)
-library(leaflet)
 library(plotly)
 library(reticulate)
 library(tidyverse)
+library(Polychrome)
 
 setwd("~/Documents/Fantasy_App_2020/")
 
 week <- ceiling(as.numeric(difftime(strptime(gsub("-",".",Sys.Date()), format = "%Y.%m.%d"),
                  strptime("14.10.2019", format = "%d.%m.%Y"),units="weeks")) + 1)
+
+date <- format(Sys.time(),"%b %d, %Y, at %X")
 
 z_score<-function(x,mean,sd){
   z<-(x-mean)/sd
@@ -40,12 +40,16 @@ toSeconds <- function(x){
   )
 }
 
+cat_palette <- createPalette(17,"#0000ff")
+team_palette <- createPalette(9,"#0000ff")
+
+names(cat_palette) = names(team_palette) = NULL
+
 gg_color_hue <- function(n) {
   hues = seq(15, 375, length = n + 1)
   hcl(h = hues, l = 65, c = 100)[1:n]
 }
 
-pal <- colorFactor(c("red","blue","forestgreen","gold"), domain = sort(unique(locations$X4.Division)))
 
 teamColors<-rainbow(n=12,s=.25)
 
@@ -66,7 +70,7 @@ class(matchup_data$matchup) = "numeric"
 records_df <- t(sapply(unique(matchup_data$Team), function(x){
     matchups <- matchup_data %>%
         filter(Team==x) %>%
-        filter(matchup != max(matchup)) %>%
+        ## filter(matchup != max(matchup)) %>%
         select(CatPts)
     Wins=0
     Losses=0
@@ -99,7 +103,7 @@ matchup_data[which(matchup_data$matchup==1),c(5:12,14:16,18:21)] =
     matchup_data[which(matchup_data$matchup==1),c(5:12,14:16,18:21)]*(7/12)
 
 season_data <- matchup_data %>%
-    filter(matchup!=max(matchup)) %>%
+    ## filter(matchup!=max(matchup)) %>%
     group_by(Team) %>%
     summarise_all(sum) %>%
     as.data.frame() %>%
@@ -107,7 +111,7 @@ season_data <- matchup_data %>%
 
 games_for_average_stats <- sapply(rownames(season_data), function(x){
     games<-length(which(matchup_data %>%
-                        filter(matchup!=max(matchup)) %>%
+                        ## filter(matchup!=max(matchup)) %>%
                         select(Team)==x))
     return(games)
 })
@@ -172,52 +176,82 @@ rownames(weekly_team_z) <- rownames(matchup_data)
 # Functions for growth curves
 #############################
 
-make_z_score_table<-function(weekly_cat_rankings){
-  ## weekly_cat_rankings<-weekly_cat_rankings[,-17]
-  ## weekly_cat_rankings[,16]=-as.numeric(weekly_cat_rankings[,16])
-  weekly_team_z<-matrix(0,nrow = nrow(weekly_cat_rankings),ncol = ncol(weekly_cat_rankings))
-  weekly_cat_rankings_numeric<-apply(weekly_cat_rankings,2,as.numeric)
-  rownames(weekly_cat_rankings_numeric)<-rownames(weekly_cat_rankings)
-  weekly_cat_rankings<-weekly_cat_rankings_numeric
-  rownames(weekly_team_z)<-rownames(weekly_cat_rankings)
-  colnames(weekly_team_z)<-colnames(weekly_cat_rankings)
-  for(i in 1:nrow(weekly_cat_rankings)){
-    for(j in 1:ncol(weekly_cat_rankings)){
-      if(sd(weekly_cat_rankings[,j])!=0){
-        weekly_team_z[i,j]<-z_score(weekly_cat_rankings[i,j],mean(as.numeric(weekly_cat_rankings[,j])),sd(as.numeric(weekly_cat_rankings[,j])))
-      } else {
-        weekly_team_z[i,j]<-0
-      }
+result <- function(x){
+    if(x<8.5){return("Loss")}
+    else if(x>8.5){return("Win")}
+    else{return("Tie")}
+}
+result=Vectorize(result)
+
+plot_category_curve<-function(matchup_data_all_z,
+                              team,category){
+    drop_indices<-duplicated(matchup_data_all[,-c(1:4)])
+    temp<-data.frame(matchup_data_all_z,CatPts=matchup_data_all[!drop_indices,"CatPts"])
+    if(category!="All"&category!="Average Weekly Z Score"){
+        plot_df<-temp %>%
+            filter(Team==team) %>%
+            select(category,CatPts,matchup) %>%
+            mutate(CatPts=result(CatPts))
+        colnames(plot_df)<-c("value","result","Week")
+        mytitle=paste0(team,", ", category)
+        ggplot(plot_df, aes(x = Week, y = value,color = result)) +
+            geom_smooth(aes(group = 1), colour = "black") +
+            geom_point(size = 5) +
+            theme_bw() +
+            ylab(label="Z score") +
+            xlab("Week Number") +
+            ggtitle(mytitle) +
+            geom_hline(yintercept = 0)
+    }else if(category=="Average Weekly Z Score"){
+        plot_df<-temp %>%
+            filter(Team==team) %>%
+            mutate(CatPts=result(CatPts)) %>%
+            gather(key,value,-CatPts,-matchup,-Team)
+        mytitle=paste0(team,", ", category)
+        ggplot(plot_df, aes(x = matchup, y = value,color = key)) +
+            geom_smooth(aes(group = 1), colour = "black") +
+            ##geom_point(size = 5) +
+            theme_bw() +
+            ylab(label="Z score") +
+            xlab("Week Number") +
+            ggtitle(mytitle) +
+            geom_hline(yintercept = 0)
     }
-  }
-  weekly_team_z[,16]=-weekly_team_z[,16]
-  return(weekly_team_z)
+    else if(category=="All"){
+        plot_df<-temp %>%
+            filter(Team==team) %>%
+            mutate(CatPts=result(CatPts)) %>%
+            gather(key,value,-CatPts,-matchup,-Team)
+        mytitle=paste0(team,", All categories")
+        ggplot(plot_df, aes(x = matchup, y = value,
+                            group=key,color = key)) +
+            geom_line(size=1.5) +
+            scale_color_manual(values=cat_palette) +
+            theme_bw() +
+            ylab(label="Z score") +
+            xlab("Week Number") +
+            ggtitle(mytitle) +
+            geom_hline(yintercept = 0)        
+    }
 }
 
-## plot_category_curve<-function(weekly_stats_list,team,category){
-##   cat_vector<-unlist(lapply(weekly_stats_list,function(x) return(x[team,category])))
-##   result_vector<-unlist(lapply(weekly_stats_list,function(x) return(x[team,"result"])))
-##   plot_df<-data.frame(Week =  1:length(cat_vector),value = as.numeric(cat_vector),result=result_vector)
-##   mytitle=paste0(team,", ", category)
-##   ggplot(plot_df, aes(x = Week, y = value,color = result)) +
-##     geom_point(size = 3) +
-##     geom_smooth(aes(group = 1), colour = "black") +
-
-##     theme_bw() +
-##     ylab(label="Z score") +
-##     xlab("Week Number") +
-##     ggtitle(mytitle) +
-##     geom_hline(yintercept = 0) +
-##     theme(axis.line = element_line(colour = "black"),
-##           axis.title=element_text(size=12,face="bold"),
-##           plot.title=element_text(size=14,face="bold"),
-##           panel.grid.major = element_blank(),
-##           panel.grid.minor = element_blank(),
-##           panel.background = element_blank(),
-##           legend.key=element_blank(),
-##           legend.position = "none"
-##     )
-## }
+plot_category_curve_all<-function(matchup_data_all_z){
+    plot_df<-temp %>%
+        mutate(CatPts=result(CatPts)) %>%
+        gather(key,value,-CatPts,-matchup,-Team) %>%
+        group_by(Team,matchup) %>%
+        summarize(mean = mean(value))
+    mytitle=paste0("All teams average performance over time")
+    ggplot(plot_df, aes(x = matchup, y = mean,color = Team,group = Team)) +
+        geom_smooth(size = 3) +
+        ##geom_line(size = 3) +
+        scale_color_manual(values = team_palette) +
+        theme_bw() +
+        ylab(label="Z score") +
+        xlab("Week Number") +
+        ggtitle(mytitle) +
+        geom_hline(yintercept = 0)
+}
 #############################
 ord <- hclust( dist(weekly_team_z, method = "euclidean"), method = "ward.D" )$order
 library(reshape)
